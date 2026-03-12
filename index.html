@@ -1,0 +1,1297 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>스마트 소비 관리 장부</title>
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      font-family: 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: #f4f7f6;
+      color: #222;
+    }
+
+    .wrap {
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    .header {
+      text-align: center;
+      font-size: 24px;
+      font-weight: bold;
+      margin-bottom: 10px;
+    }
+
+    .sub {
+      text-align: center;
+      font-size: 13px;
+      color: #666;
+      margin-bottom: 24px;
+    }
+
+    .top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+
+    .top-bar-left, .top-bar-right {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .btn-main, .btn-secondary {
+      border: none;
+      border-radius: 6px;
+      padding: 10px 14px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .btn-main {
+      background: #4a90e2;
+      color: white;
+    }
+
+    .btn-secondary {
+      background: white;
+      border: 1px solid #d9d9d9;
+      color: #222;
+    }
+
+    .btn-mini {
+      border: none;
+      border-radius: 4px;
+      padding: 4px 8px;
+      cursor: pointer;
+      font-size: 10px;
+      font-weight: 600;
+    }
+
+    .btn-mini.edit {
+      background: #ffd666;
+      color: #222;
+    }
+
+    .btn-mini.del {
+      background: #ff7875;
+      color: #fff;
+    }
+
+    .btn-add {
+      background: #4a90e2;
+      color: white;
+      border: none;
+      font-weight: bold;
+      cursor: pointer;
+      padding: 8px 12px;
+      border-radius: 4px;
+      font-size: 11px;
+      white-space: nowrap;
+    }
+
+    .btn-edit {
+      background: #ffc107;
+      border: none;
+      padding: 5px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 10px;
+      margin-right: 4px;
+    }
+
+    .btn-del {
+      background: #ff4d4f;
+      color: white;
+      border: none;
+      padding: 5px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 10px;
+    }
+
+    .toolbar-input {
+      padding: 10px 12px;
+      border: 1px solid #d9d9d9;
+      border-radius: 6px;
+      font-size: 13px;
+      background: #fff;
+      min-width: 180px;
+    }
+
+    .summary-box {
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 14px;
+      margin-bottom: 18px;
+      display: grid;
+      grid-template-columns: 1.1fr 1fr 1.6fr auto;
+      gap: 10px;
+      align-items: stretch;
+    }
+
+    .summary-card {
+      background: #fafafa;
+      border: 1px solid #eee;
+      border-radius: 6px;
+      padding: 12px;
+      min-height: 76px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .summary-card .label {
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 6px;
+    }
+
+    .summary-card .value {
+      font-size: 18px;
+      font-weight: bold;
+    }
+
+    .summary-card select {
+      width: 100%;
+      padding: 8px 10px;
+      border-radius: 6px;
+      border: 1px solid #ddd;
+      font-size: 13px;
+      background: #fff;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .edit-mode-only {
+      display: none !important;
+    }
+
+    body.edit-mode .edit-mode-only {
+      display: inline-flex !important;
+    }
+
+    .category {
+      background: #fff;
+      margin-bottom: 15px;
+      border-radius: 6px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+      overflow: hidden;
+      border: 1px solid #ddd;
+    }
+
+    .category-body {
+      display: none;
+    }
+
+    .category.open .category-body {
+      display: block;
+    }
+
+    .cat-title {
+      background: #4a90e2;
+      color: white;
+      padding: 11px 15px;
+      font-weight: bold;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    .cat-title-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .cat-actions, .item-actions {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      flex-shrink: 0;
+    }
+
+    details {
+      border-bottom: 1px solid #eee;
+      background: white;
+    }
+
+    details:last-child {
+      border-bottom: none;
+    }
+
+    summary {
+      padding: 12px 15px;
+      cursor: pointer;
+      font-weight: 600;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 13px;
+      list-style: none;
+      gap: 10px;
+      background: #fffdf7;
+    }
+
+    details[open] > summary {
+      background: #fffaf0;
+    }
+
+    .summary-left {
+      flex: 1;
+      min-width: 0;
+    }
+
+    summary::-webkit-details-marker {
+      display: none;
+    }
+
+    summary::after {
+      content: "▶";
+      font-size: 0.7em;
+      color: #bbb;
+    }
+
+    details[open] summary::after {
+      content: "▼";
+    }
+
+    .content {
+      padding: 0 15px 15px;
+      background: #fafafa;
+    }
+
+    .item-total {
+      font-size: 12px;
+      color: #444;
+      margin-top: 10px;
+      font-weight: 600;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+      font-size: 12px;
+      table-layout: fixed;
+      margin-top: 10px;
+    }
+
+    th, td {
+      border: 1px solid #e0e0e0;
+      padding: 8px;
+      text-align: center;
+      word-break: break-all;
+      vertical-align: top;
+    }
+
+    th {
+      background: #f8f9fa;
+      color: #666;
+      font-weight: 600;
+    }
+
+    .inner-form {
+      background: #f7fbff;
+      border: none;
+      padding: 10px;
+      margin-top: 10px;
+      display: flex;
+      gap: 6px;
+      border-radius: 6px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .inner-form input {
+      padding: 7px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 11px;
+      flex: 1;
+      min-width: 120px;
+    }
+
+    .inline-editor {
+      background: #f8fbff;
+      border: none;
+      border-radius: 6px;
+      padding: 10px;
+      margin-top: 10px;
+      margin-bottom: 10px;
+      display: none;
+    }
+
+    .inline-editor.show {
+      display: block !important;
+    }
+
+    #global-category-add-box {
+      margin-bottom: 16px;
+    }
+
+    .form-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .form-row input {
+      padding: 8px 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 12px;
+      min-width: 180px;
+      flex: 1;
+    }
+
+    .empty {
+      color: #bbb;
+      font-size: 11px;
+      text-align: center;
+      padding: 10px;
+      background: white;
+      margin-top: 10px;
+      border: 1px solid #eee;
+    }
+
+    .danger-zone {
+      display: none;
+      margin-top: 20px;
+      background: #fff;
+      border: 1px solid #f0d0d0;
+      border-radius: 8px;
+      padding: 14px;
+    }
+
+    body.edit-mode .danger-zone {
+      display: block;
+    }
+
+    .danger-zone h3 {
+      margin: 0 0 8px;
+      color: #b42318;
+      font-size: 15px;
+    }
+
+    .danger-zone p {
+      margin: 0 0 12px;
+      color: #666;
+      font-size: 12px;
+    }
+
+    @media (max-width: 900px) {
+      .summary-box {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    @media (max-width: 640px) {
+      body {
+        padding: 12px;
+      }
+
+      .summary-box {
+        grid-template-columns: 1fr;
+      }
+
+      .inner-form, .form-row {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .inner-form input, .btn-add, .form-row input, .toolbar-input {
+        width: 100%;
+      }
+
+      table {
+        font-size: 11px;
+      }
+
+      th, td {
+        padding: 6px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="header">📊 스마트 소비 관리 장부</div>
+    <div class="sub">카테고리별 구매품 기록, 수정, 삭제, 합계 확인까지 한 번에 관리</div>
+
+    <div class="top-bar">
+      <div class="top-bar-left">
+        <button class="btn-main edit-mode-only" id="showCategoryAddBtn" onclick="showGlobalCategoryAddForm()">카테고리 추가</button>
+      </div>
+      <div class="top-bar-right">
+        <button class="btn-secondary" onclick="loadServerData()">새로고침</button>
+        <button class="btn-secondary" onclick="exportCsv()">CSV 내보내기</button>
+        <button class="btn-secondary" id="editModeBtn" onclick="toggleEditMode()">항목수정</button>
+      </div>
+    </div>
+
+    <div class="inline-editor hidden" id="global-category-add-box">
+      <div class="form-row">
+        <input type="text" id="newCategoryName" class="toolbar-input" placeholder="새 카테고리명 입력">
+        <button class="btn-main" onclick="addCategory()">추가</button>
+        <button class="btn-secondary" onclick="hideGlobalCategoryAddForm()">취소</button>
+      </div>
+    </div>
+
+    <div class="summary-box">
+      <div class="summary-card">
+        <div class="label">조회년도</div>
+        <select id="yearSelect" onchange="handleYearChange()"></select>
+      </div>
+      <div class="summary-card">
+        <div class="label">조회 금액</div>
+        <div class="value" id="sumPrice">0원</div>
+      </div>
+      <div class="summary-card">
+        <div class="label">조회 항목</div>
+        <select id="itemFilterSelect"></select>
+      </div>
+      <div class="summary-card">
+        <div class="label">&nbsp;</div>
+        <button class="btn-main" onclick="runQuerySummary()">조회</button>
+      </div>
+    </div>
+
+    <div id="renderArea"></div>
+
+    <div class="danger-zone">
+      <h3>전체 데이터 삭제</h3>
+      <p>purchase_history 테이블의 모든 기록을 삭제합니다. 되돌릴 수 없으니 주의하세요.</p>
+      <button class="btn-secondary" onclick="deleteAllRows()">전체 삭제 실행</button>
+    </div>
+  </div>
+
+  <script>
+    let structure = {
+      "생활용품": ["스킨 / 로션", "샴푸 / 세제", "치약 / 칫솔", "비누", "세탁세제 / 섬유유연제"],
+      "영양제": ["비타민 C, D", "유산균", "오메가 3", "아르기닌"],
+      "차량관리": ["엔진오일", "워셔액", "와이퍼", "방향제"],
+      "운동용품": ["운동복", "운동화", "탁구용품"]
+    };
+
+    const STRUCTURE_KEY = "purchase_structure_v1";
+
+    const icons = {
+      "생활용품": "🏠",
+      "영양제": "💊",
+      "차량관리": "🚗",
+      "운동용품": "🏓"
+    };
+
+    const S_URL = "https://hwzirorqksveraudumaz.supabase.co";
+    const S_KEY = "sb_publishable_B6mExQVdBBHktcqv3WtO4A_JrdZmHAS";
+    const supabaseClient = supabase.createClient(S_URL, S_KEY);
+
+    let currentRows = [];
+    let activeEdit = null;
+
+    window.onload = () => {
+      loadStructure();
+      initUI();
+      loadServerData();
+    };
+
+    function loadStructure() {
+      const saved = localStorage.getItem(STRUCTURE_KEY);
+      if (!saved) return;
+
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === "object") structure = parsed;
+      } catch (e) {
+        console.error("구조 불러오기 실패", e);
+      }
+    }
+
+    function saveStructure() {
+      localStorage.setItem(STRUCTURE_KEY, JSON.stringify(structure));
+    }
+
+    function makeId(name) {
+      return btoa(unescape(encodeURIComponent(name))).replace(/[^a-z0-9]/gi, "");
+    }
+
+    function numberFormat(value) {
+      return Number(value || 0).toLocaleString("ko-KR");
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
+    function preserveOpenDetails() {
+      return Array.from(document.querySelectorAll("details[open]")).map(el => el.id);
+    }
+
+    function restoreOpenDetails(ids) {
+      ids.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.open = true;
+      });
+    }
+
+    function resetActiveEditState() {
+      activeEdit = null;
+    }
+
+    function clearItemForm(itemName) {
+      const id = makeId(itemName);
+      const dateEl = document.getElementById(`date-${id}`);
+      const priceEl = document.getElementById(`price-${id}`);
+      const noteEl = document.getElementById(`note-${id}`);
+      const saveBtn = document.getElementById(`save-btn-${id}`);
+      const cancelBtn = document.getElementById(`cancel-btn-${id}`);
+
+      if (dateEl) dateEl.value = new Date().toISOString().split("T")[0];
+      if (priceEl) priceEl.value = "";
+      if (noteEl) noteEl.value = "";
+      if (saveBtn) saveBtn.textContent = "기록 추가";
+      if (cancelBtn) cancelBtn.classList.add("hidden");
+    }
+
+    function clearAllItemEditModes() {
+      Object.values(structure).forEach(items => {
+        items.forEach(item => clearItemForm(item));
+      });
+      resetActiveEditState();
+    }
+
+    function closeAllInlineEditors() {
+      document.querySelectorAll(".inline-editor").forEach(el => {
+        el.classList.remove("show");
+        el.classList.add("hidden");
+      });
+
+      const globalInput = document.getElementById("newCategoryName");
+      if (globalInput) globalInput.value = "";
+
+      Object.keys(structure).forEach(cat => {
+        const addInput = document.getElementById(`add-item-input-${makeId(cat)}`);
+        if (addInput) addInput.value = "";
+      });
+
+      clearAllItemEditModes();
+    }
+
+    function rerenderStructure() {
+      const openIds = preserveOpenDetails();
+      const openCats = Array.from(document.querySelectorAll(".category.open")).map(el => el.id);
+
+      saveStructure();
+      initUI();
+
+      openCats.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.add("open");
+      });
+
+      restoreOpenDetails(openIds);
+      loadServerData();
+    }
+
+    function initUI() {
+      const area = document.getElementById("renderArea");
+      const today = new Date().toISOString().split("T")[0];
+
+      let html = "";
+
+      for (const [cat, items] of Object.entries(structure)) {
+        const catEsc = escapeHtml(cat);
+        const catId = makeId(cat);
+
+        html += `
+          <div class="category" id="cat-${catId}">
+            <div class="cat-title" onclick="toggleCategory('${catEsc}')">
+              <div class="cat-title-left">${icons[cat] || "📁"} <span>${catEsc}</span></div>
+              <div class="cat-actions" onclick="event.stopPropagation()">
+                <button class="btn-mini edit edit-mode-only" onclick="showAddItemForm('${catEsc}')">추가</button>
+                <button class="btn-mini edit edit-mode-only" onclick="showCategoryRenameForm('${catEsc}')">수정</button>
+                <button class="btn-mini del edit-mode-only" onclick="removeCategory('${catEsc}')">삭제</button>
+              </div>
+            </div>
+
+            <div class="category-body">
+              <div class="inline-editor hidden" id="rename-cat-box-${catId}">
+                <div class="form-row">
+                  <input type="text" id="rename-cat-input-${catId}" value="${catEsc}" placeholder="카테고리명 수정">
+                  <button class="btn-main" onclick="applyCategoryRename('${catEsc}')">저장</button>
+                  <button class="btn-secondary" onclick="hideCategoryRenameForm('${catEsc}')">취소</button>
+                </div>
+              </div>
+
+              <div class="inline-editor hidden" id="add-item-box-${catId}">
+                <div class="form-row">
+                  <input type="text" id="add-item-input-${catId}" placeholder="${catEsc} 안에 추가할 세부 항목명">
+                  <button class="btn-main" onclick="addItemToCategory('${catEsc}')">추가</button>
+                  <button class="btn-secondary" onclick="hideAddItemForm('${catEsc}')">취소</button>
+                </div>
+              </div>
+        `;
+
+        items.forEach(name => {
+          const itemId = makeId(name);
+          const key = makeId(cat + "::" + name);
+          const nameEsc = escapeHtml(name);
+
+          html += `
+            <details id="det-${itemId}">
+              <summary>
+                <span class="summary-left">${nameEsc}</span>
+                <span class="item-actions" onclick="event.stopPropagation()">
+                  <button class="btn-mini edit edit-mode-only" onclick="showItemRenameForm('${catEsc}', '${nameEsc}')">수정</button>
+                  <button class="btn-mini del edit-mode-only" onclick="removeItem('${catEsc}', '${nameEsc}')">삭제</button>
+                </span>
+              </summary>
+
+              <div class="content">
+                <div class="inline-editor hidden" id="rename-item-box-${key}">
+                  <div class="form-row">
+                    <input type="text" id="rename-item-input-${key}" value="${nameEsc}" placeholder="세부 항목명 수정">
+                    <button class="btn-main" onclick="applyItemRename('${catEsc}', '${nameEsc}')">저장</button>
+                    <button class="btn-secondary" onclick="hideItemRenameForm('${catEsc}', '${nameEsc}')">취소</button>
+                  </div>
+                </div>
+
+                <div class="item-total" id="total-${itemId}">총 구매금액: 0원 / 총 0건</div>
+                <div id="table-${itemId}"><div class="empty">저장된 이력이 없습니다.</div></div>
+
+                <div class="inner-form">
+                  <input type="date" id="date-${itemId}" value="${today}">
+                  <input type="number" id="price-${itemId}" placeholder="가격">
+                  <input type="text" id="note-${itemId}" placeholder="비고">
+                  <button id="save-btn-${itemId}" onclick="handleItemSubmit('${catEsc}', '${nameEsc}')" class="btn-add">기록 추가</button>
+                  <button id="cancel-btn-${itemId}" onclick="cancelInlineRowEdit('${nameEsc}')" class="btn-secondary hidden">취소</button>
+                </div>
+              </div>
+            </details>
+          `;
+        });
+
+        html += `
+            </div>
+          </div>
+        `;
+      }
+
+      area.innerHTML = html;
+    }
+
+    function toggleEditMode() {
+      const isEditMode = document.body.classList.toggle("edit-mode");
+      const btn = document.getElementById("editModeBtn");
+      if (btn) btn.textContent = isEditMode ? "항목수정 종료" : "항목수정";
+
+      if (!isEditMode) {
+        hideGlobalCategoryAddForm();
+        closeAllInlineEditors();
+      }
+    }
+
+    function toggleCategory(catName) {
+      const box = document.getElementById(`cat-${makeId(catName)}`);
+      if (!box) return;
+
+      closeAllInlineEditors();
+      box.classList.toggle("open");
+    }
+
+    function showGlobalCategoryAddForm() {
+      if (!document.body.classList.contains("edit-mode")) return;
+
+      closeAllInlineEditors();
+
+      const box = document.getElementById("global-category-add-box");
+      if (box) {
+        box.classList.remove("hidden");
+        box.classList.add("show");
+      }
+
+      const input = document.getElementById("newCategoryName");
+      if (input) input.focus();
+    }
+
+    function hideGlobalCategoryAddForm() {
+      const box = document.getElementById("global-category-add-box");
+      if (box) {
+        box.classList.remove("show");
+        box.classList.add("hidden");
+      }
+
+      const input = document.getElementById("newCategoryName");
+      if (input) input.value = "";
+    }
+
+    function addCategory() {
+      const input = document.getElementById("newCategoryName");
+      const trimmed = (input?.value || "").trim();
+
+      if (!trimmed) {
+        alert("카테고리명을 입력해주세요.");
+        input?.focus();
+        return;
+      }
+
+      if (structure[trimmed]) {
+        alert("이미 같은 이름의 카테고리가 있습니다.");
+        input?.focus();
+        return;
+      }
+
+      structure[trimmed] = [];
+      hideGlobalCategoryAddForm();
+      rerenderStructure();
+    }
+
+    function showCategoryRenameForm(catName) {
+      if (!document.body.classList.contains("edit-mode")) return;
+
+      closeAllInlineEditors();
+
+      const categoryBox = document.getElementById(`cat-${makeId(catName)}`);
+      if (categoryBox) categoryBox.classList.add("open");
+
+      const box = document.getElementById(`rename-cat-box-${makeId(catName)}`);
+      if (box) {
+        box.classList.remove("hidden");
+        box.classList.add("show");
+      }
+
+      const input = document.getElementById(`rename-cat-input-${makeId(catName)}`);
+      if (input) {
+        input.focus();
+        input.select();
+      }
+    }
+
+    function hideCategoryRenameForm(catName) {
+      const box = document.getElementById(`rename-cat-box-${makeId(catName)}`);
+      if (box) {
+        box.classList.remove("show");
+        box.classList.add("hidden");
+      }
+    }
+
+    function showAddItemForm(catName) {
+      if (!document.body.classList.contains("edit-mode")) return;
+
+      closeAllInlineEditors();
+
+      const categoryBox = document.getElementById(`cat-${makeId(catName)}`);
+      if (categoryBox) categoryBox.classList.add("open");
+
+      const box = document.getElementById(`add-item-box-${makeId(catName)}`);
+      if (box) {
+        box.classList.remove("hidden");
+        box.classList.add("show");
+      }
+
+      const input = document.getElementById(`add-item-input-${makeId(catName)}`);
+      if (input) input.focus();
+    }
+
+    function hideAddItemForm(catName) {
+      const box = document.getElementById(`add-item-box-${makeId(catName)}`);
+      if (box) {
+        box.classList.remove("show");
+        box.classList.add("hidden");
+      }
+
+      const input = document.getElementById(`add-item-input-${makeId(catName)}`);
+      if (input) input.value = "";
+    }
+
+    function addItemToCategory(targetCategory) {
+      const input = document.getElementById(`add-item-input-${makeId(targetCategory)}`);
+      const trimmedItem = (input?.value || "").trim();
+
+      if (!trimmedItem) {
+        alert("세부 항목명을 입력해주세요.");
+        input?.focus();
+        return;
+      }
+
+      if ((structure[targetCategory] || []).includes(trimmedItem)) {
+        alert("이미 같은 이름의 세부 항목이 있습니다.");
+        input?.focus();
+        return;
+      }
+
+      structure[targetCategory].push(trimmedItem);
+      hideAddItemForm(targetCategory);
+      rerenderStructure();
+    }
+
+    function showItemRenameForm(catName, itemName) {
+      if (!document.body.classList.contains("edit-mode")) return;
+
+      closeAllInlineEditors();
+
+      const categoryBox = document.getElementById(`cat-${makeId(catName)}`);
+      if (categoryBox) categoryBox.classList.add("open");
+
+      const det = document.getElementById(`det-${makeId(itemName)}`);
+      if (det) det.open = true;
+
+      const key = makeId(catName + "::" + itemName);
+      const box = document.getElementById(`rename-item-box-${key}`);
+
+      if (box) {
+        box.classList.remove("hidden");
+        box.classList.add("show");
+      }
+
+      const input = document.getElementById(`rename-item-input-${key}`);
+      if (input) {
+        input.focus();
+        input.select();
+      }
+    }
+
+    function hideItemRenameForm(catName, itemName) {
+      const key = makeId(catName + "::" + itemName);
+      const box = document.getElementById(`rename-item-box-${key}`);
+
+      if (box) {
+        box.classList.remove("show");
+        box.classList.add("hidden");
+      }
+    }
+
+    function applyCategoryRename(oldName) {
+      const input = document.getElementById(`rename-cat-input-${makeId(oldName)}`);
+      const trimmed = (input?.value || "").trim();
+
+      if (!trimmed) {
+        alert("카테고리명을 입력해주세요.");
+        input?.focus();
+        return;
+      }
+
+      if (trimmed === oldName) {
+        hideCategoryRenameForm(oldName);
+        return;
+      }
+
+      if (structure[trimmed]) {
+        alert("이미 같은 이름의 카테고리가 있습니다.");
+        input?.focus();
+        return;
+      }
+
+      const newStructure = {};
+      for (const [cat, items] of Object.entries(structure)) {
+        newStructure[cat === oldName ? trimmed : cat] = items;
+      }
+
+      structure = newStructure;
+      rerenderStructure();
+    }
+
+    function removeCategory(catName) {
+      const itemCount = currentRows.filter(row => row.category === catName).length;
+
+      const message = itemCount > 0
+        ? `카테고리 "${catName}"를 삭제하면 화면 목록에서 사라지고, 해당 카테고리의 기존 데이터 ${itemCount}건은 조회 항목에서 제외될 수 있습니다. 삭제할까요?`
+        : `카테고리 "${catName}"를 삭제할까요?`;
+
+      if (!confirm(message)) return;
+
+      delete structure[catName];
+      rerenderStructure();
+    }
+
+    function applyItemRename(catName, oldItemName) {
+      const key = makeId(catName + "::" + oldItemName);
+      const input = document.getElementById(`rename-item-input-${key}`);
+      const trimmed = (input?.value || "").trim();
+
+      if (!trimmed) {
+        alert("세부 항목명을 입력해주세요.");
+        input?.focus();
+        return;
+      }
+
+      if (trimmed === oldItemName) {
+        hideItemRenameForm(catName, oldItemName);
+        return;
+      }
+
+      if ((structure[catName] || []).includes(trimmed)) {
+        alert("이미 같은 이름의 세부 항목이 있습니다.");
+        input?.focus();
+        return;
+      }
+
+      structure[catName] = (structure[catName] || []).map(item =>
+        item === oldItemName ? trimmed : item
+      );
+
+      rerenderStructure();
+    }
+
+    function removeItem(catName, itemName) {
+      const itemCount = currentRows.filter(row => row.item_name === itemName && row.category === catName).length;
+
+      const message = itemCount > 0
+        ? `세부 항목 "${itemName}"를 삭제하면 화면 목록에서 사라지고, 해당 이력 ${itemCount}건은 조회 항목에서 제외될 수 있습니다. 삭제할까요?`
+        : `세부 항목 "${itemName}"를 삭제할까요?`;
+
+      if (!confirm(message)) return;
+
+      structure[catName] = (structure[catName] || []).filter(item => item !== itemName);
+      rerenderStructure();
+    }
+
+    async function loadServerData() {
+      const { data, error } = await supabaseClient
+        .from("purchase_history")
+        .select("*")
+        .order("purchase_date", { ascending: true });
+
+      if (error) {
+        alert("데이터를 불러오지 못했습니다. Supabase 설정이나 테이블명을 확인해주세요.");
+        console.error(error);
+        return;
+      }
+
+      currentRows = data || [];
+
+      document.querySelectorAll('[id^="table-"]').forEach(el => {
+        el.innerHTML = '<div class="empty">저장된 이력이 없습니다.</div>';
+      });
+
+      document.querySelectorAll('[id^="total-"]').forEach(el => {
+        el.textContent = "총 구매금액: 0원 / 총 0건";
+      });
+
+      const grouped = {};
+
+      currentRows.forEach(row => {
+        const itemId = makeId(row.item_name);
+        if (!grouped[itemId]) grouped[itemId] = [];
+        grouped[itemId].push(row);
+      });
+
+      Object.entries(grouped).forEach(([itemId, rows]) => {
+        const target = document.getElementById(`table-${itemId}`);
+        const totalTarget = document.getElementById(`total-${itemId}`);
+        if (!target) return;
+
+        const totalPrice = rows.reduce((sum, r) => sum + Number(r.price || 0), 0);
+
+        if (totalTarget) {
+          totalTarget.textContent = `총 구매금액: ${numberFormat(totalPrice)}원 / 총 ${rows.length}건`;
+        }
+
+        let tableHtml = `
+          <table>
+            <thead>
+              <tr>
+                <th>날짜</th>
+                <th>가격</th>
+                <th>비고</th>
+                <th>관리</th>
+              </tr>
+            </thead>
+            <tbody>
+        `;
+
+        rows.forEach(r => {
+          const safeId = String(r.id ?? "").replace(/'/g, "&#39;");
+          const safeItem = String(r.item_name ?? "").replace(/'/g, "&#39;");
+          const safeCategory = String(r.category ?? "").replace(/'/g, "&#39;");
+
+          tableHtml += `
+            <tr>
+              <td>${r.purchase_date || ""}</td>
+              <td>${numberFormat(r.price)}원</td>
+              <td>${r.note || ""}</td>
+              <td>
+                <button onclick="startInlineRowEdit('${safeCategory}', '${safeItem}', '${safeId}')" class="btn-edit edit-mode-only">수정</button>
+                <button onclick="deleteRow('${safeId}')" class="btn-del edit-mode-only">삭제</button>
+              </td>
+            </tr>
+          `;
+        });
+
+        tableHtml += `</tbody></table>`;
+        target.innerHTML = tableHtml;
+      });
+
+      updateSummary();
+    }
+
+    function startInlineRowEdit(catName, itemName, rowId) {
+      closeAllInlineEditors();
+
+      const categoryBox = document.getElementById(`cat-${makeId(catName)}`);
+      if (categoryBox) categoryBox.classList.add("open");
+
+      const det = document.getElementById(`det-${makeId(itemName)}`);
+      if (det) det.open = true;
+
+      const row = currentRows.find(r => String(r.id) === String(rowId));
+      if (!row) return;
+
+      activeEdit = {
+        rowId: String(rowId),
+        itemName,
+        category: catName
+      };
+
+      const id = makeId(itemName);
+      const dateEl = document.getElementById(`date-${id}`);
+      const priceEl = document.getElementById(`price-${id}`);
+      const noteEl = document.getElementById(`note-${id}`);
+      const saveBtn = document.getElementById(`save-btn-${id}`);
+      const cancelBtn = document.getElementById(`cancel-btn-${id}`);
+
+      if (dateEl) dateEl.value = row.purchase_date || "";
+      if (priceEl) priceEl.value = row.price ?? "";
+      if (noteEl) noteEl.value = row.note || "";
+      if (saveBtn) saveBtn.textContent = "저장";
+      if (cancelBtn) cancelBtn.classList.remove("hidden");
+    }
+
+    function cancelInlineRowEdit(itemName) {
+      clearItemForm(itemName);
+      resetActiveEditState();
+    }
+
+    async function handleItemSubmit(catName, itemName) {
+      const id = makeId(itemName);
+      const date = document.getElementById(`date-${id}`).value;
+      const price = document.getElementById(`price-${id}`).value;
+      const note = document.getElementById(`note-${id}`).value;
+
+      if (!date || !price) {
+        alert("날짜와 가격을 입력해주세요.");
+        return;
+      }
+
+      if (activeEdit && activeEdit.itemName === itemName) {
+        const { error } = await supabaseClient
+          .from("purchase_history")
+          .update({
+            purchase_date: date,
+            price: parseInt(price, 10),
+            note
+          })
+          .eq("id", activeEdit.rowId);
+
+        if (error) {
+          alert("수정에 실패했습니다.");
+          console.error(error);
+          return;
+        }
+
+        clearItemForm(itemName);
+        resetActiveEditState();
+        await loadServerData();
+        return;
+      }
+
+      const { error } = await supabaseClient
+        .from("purchase_history")
+        .insert([{
+          category: catName,
+          item_name: itemName,
+          price: parseInt(price, 10),
+          purchase_date: date,
+          note
+        }]);
+
+      if (error) {
+        alert("저장에 실패했습니다.");
+        console.error(error);
+        return;
+      }
+
+      clearItemForm(itemName);
+      await loadServerData();
+    }
+
+    function getAvailableYears() {
+      const years = [...new Set(
+        currentRows.map(r => String(r.purchase_date || "").slice(0, 4)).filter(Boolean)
+      )].sort((a, b) => b.localeCompare(a));
+
+      const currentYear = String(new Date().getFullYear());
+      if (!years.includes(currentYear)) years.unshift(currentYear);
+      return years;
+    }
+
+    function populateYearSelect() {
+      const select = document.getElementById("yearSelect");
+      if (!select) return;
+
+      const years = getAvailableYears();
+      const currentYear = String(new Date().getFullYear());
+      const previous = select.value || currentYear;
+
+      select.innerHTML = years.map(y => `<option value="${y}">${y}년</option>`).join("");
+      select.value = years.includes(previous) ? previous : currentYear;
+    }
+
+    function populateItemFilterSelect() {
+      const select = document.getElementById("itemFilterSelect");
+      if (!select) return;
+
+      const prev = select.value || "ALL";
+      let html = `<option value="ALL">전체항목</option>`;
+
+      Object.entries(structure).forEach(([cat, items]) => {
+        html += `<option value="CAT::${cat}">[카테고리] ${cat}</option>`;
+        items.forEach(item => {
+          html += `<option value="ITEM::${cat}::${item}">└ ${item}</option>`;
+        });
+      });
+
+      select.innerHTML = html;
+      select.value = Array.from(select.options).some(o => o.value === prev) ? prev : "ALL";
+    }
+
+    function calcAmountByFilter(year, filterValue) {
+      const rowsByYear = currentRows.filter(r => String(r.purchase_date || "").startsWith(year));
+
+      if (filterValue === "ALL") {
+        return rowsByYear.reduce((sum, r) => sum + Number(r.price || 0), 0);
+      }
+
+      if (filterValue.startsWith("CAT::")) {
+        const category = filterValue.slice(5);
+        return rowsByYear
+          .filter(r => r.category === category)
+          .reduce((sum, r) => sum + Number(r.price || 0), 0);
+      }
+
+      if (filterValue.startsWith("ITEM::")) {
+        const parts = filterValue.split("::");
+        const category = parts[1] || "";
+        const itemName = parts.slice(2).join("::");
+
+        return rowsByYear
+          .filter(r => r.category === category && r.item_name === itemName)
+          .reduce((sum, r) => sum + Number(r.price || 0), 0);
+      }
+
+      return 0;
+    }
+
+    function runQuerySummary(resetItem = false) {
+      const yearSelect = document.getElementById("yearSelect");
+      const itemSelect = document.getElementById("itemFilterSelect");
+      if (!yearSelect || !itemSelect) return;
+
+      if (resetItem) itemSelect.value = "ALL";
+
+      const total = calcAmountByFilter(yearSelect.value, itemSelect.value || "ALL");
+      document.getElementById("sumPrice").textContent = `${numberFormat(total)}원`;
+    }
+
+    function handleYearChange() {
+      runQuerySummary(true);
+    }
+
+    function updateSummary() {
+      populateYearSelect();
+      populateItemFilterSelect();
+      runQuerySummary(true);
+    }
+
+    async function deleteRow(rowId) {
+      if (!confirm("정말 삭제할까요?")) return;
+
+      const { error } = await supabaseClient
+        .from("purchase_history")
+        .delete()
+        .eq("id", rowId);
+
+      if (error) {
+        alert("삭제에 실패했습니다.");
+        console.error(error);
+        return;
+      }
+
+      closeAllInlineEditors();
+      await loadServerData();
+    }
+
+    async function deleteAllRows() {
+      if (!confirm("전체 데이터를 모두 삭제할까요?")) return;
+      if (!confirm("정말로 전체 삭제를 진행할까요? 되돌릴 수 없습니다.")) return;
+
+      const { error } = await supabaseClient
+        .from("purchase_history")
+        .delete()
+        .neq("id", "");
+
+      if (error) {
+        alert("전체 삭제에 실패했습니다.");
+        console.error(error);
+        return;
+      }
+
+      closeAllInlineEditors();
+      await loadServerData();
+    }
+
+    function exportCsv() {
+      if (!currentRows.length) {
+        alert("내보낼 데이터가 없습니다.");
+        return;
+      }
+
+      const header = ["카테고리", "품목명", "구매일", "가격", "비고"];
+      const rows = currentRows.map(r => [
+        r.category || "",
+        r.item_name || "",
+        r.purchase_date || "",
+        r.price || 0,
+        r.note || ""
+      ]);
+
+      const csv = [header, ...rows]
+        .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(","))
+        .join("\n");
+
+      const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "purchase_history_export.csv";
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+  </script>
+</body>
+</html>
