@@ -78,6 +78,7 @@
       cursor: pointer;
       font-size: 10px;
       font-weight: 600;
+      min-width: 28px;
     }
 
     .btn-mini.edit {
@@ -220,6 +221,7 @@
       display: flex;
       align-items: center;
       gap: 8px;
+      min-width: 0;
     }
 
     .cat-actions, .item-actions {
@@ -227,6 +229,7 @@
       gap: 6px;
       align-items: center;
       flex-shrink: 0;
+      flex-wrap: wrap;
     }
 
     details {
@@ -443,7 +446,7 @@
         <button class="btn-main edit-mode-only" id="showCategoryAddBtn" onclick="showGlobalCategoryAddForm()">카테고리 추가</button>
       </div>
       <div class="top-bar-right">
-        <button class="btn-secondary" onclick="loadServerData()">새로고침</button>
+        <button class="btn-secondary" onclick="refreshAll()">새로고침</button>
         <button class="btn-secondary" onclick="exportCsv()">CSV 내보내기</button>
         <button class="btn-secondary" id="editModeBtn" onclick="toggleEditMode()">항목수정</button>
       </div>
@@ -486,14 +489,9 @@
   </div>
 
   <script>
-    let structure = {
-      "생활용품": ["스킨 / 로션", "샴푸 / 세제", "치약 / 칫솔", "비누", "세탁세제 / 섬유유연제"],
-      "영양제": ["비타민 C, D", "유산균", "오메가 3", "아르기닌"],
-      "차량관리": ["엔진오일", "워셔액", "와이퍼", "방향제"],
-      "운동용품": ["운동복", "운동화", "탁구용품"]
-    };
-
-    const STRUCTURE_KEY = "purchase_structure_v1";
+    let structure = {};
+    let currentRows = [];
+    let activeEdit = null;
 
     const icons = {
       "생활용품": "🏠",
@@ -506,29 +504,14 @@
     const S_KEY = "sb_publishable_B6mExQVdBBHktcqv3WtO4A_JrdZmHAS";
     const supabaseClient = supabase.createClient(S_URL, S_KEY);
 
-    let currentRows = [];
-    let activeEdit = null;
-
-    window.onload = () => {
-      loadStructure();
-      initUI();
-      loadServerData();
+    window.onload = async () => {
+      await refreshAll();
     };
 
-    function loadStructure() {
-      const saved = localStorage.getItem(STRUCTURE_KEY);
-      if (!saved) return;
-
-      try {
-        const parsed = JSON.parse(saved);
-        if (parsed && typeof parsed === "object") structure = parsed;
-      } catch (e) {
-        console.error("구조 불러오기 실패", e);
-      }
-    }
-
-    function saveStructure() {
-      localStorage.setItem(STRUCTURE_KEY, JSON.stringify(structure));
+    async function refreshAll() {
+      await loadCategoriesFromServer();
+      initUI();
+      await loadServerData();
     }
 
     function makeId(name) {
@@ -544,7 +527,7 @@
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
         .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
+        .replace(/\"/g, "&quot;")
         .replace(/'/g, "&#39;");
     }
 
@@ -557,6 +540,32 @@
         const el = document.getElementById(id);
         if (el) el.open = true;
       });
+    }
+
+    async function loadCategoriesFromServer() {
+      const { data, error } = await supabaseClient
+        .from("categories")
+        .select("*")
+        .order("category_order", { ascending: true })
+        .order("item_order", { ascending: true });
+
+      if (error) {
+        console.error("카테고리 데이터 로드 실패", error);
+        alert("카테고리 데이터를 불러오지 못했습니다.");
+        structure = {};
+        return;
+      }
+
+      const newStructure = {};
+      (data || []).forEach(row => {
+        const cat = String(row.category_name || "").trim();
+        const item = String(row.item_name || "").trim();
+        if (!cat) return;
+        if (!newStructure[cat]) newStructure[cat] = [];
+        if (item) newStructure[cat].push(item);
+      });
+
+      structure = newStructure;
     }
 
     function resetActiveEditState() {
@@ -602,11 +611,11 @@
       clearAllItemEditModes();
     }
 
-    function rerenderStructure() {
+    async function rerenderStructure() {
       const openIds = preserveOpenDetails();
       const openCats = Array.from(document.querySelectorAll(".category.open")).map(el => el.id);
 
-      saveStructure();
+      await loadCategoriesFromServer();
       initUI();
 
       openCats.forEach(id => {
@@ -615,13 +624,12 @@
       });
 
       restoreOpenDetails(openIds);
-      loadServerData();
+      await loadServerData();
     }
 
     function initUI() {
       const area = document.getElementById("renderArea");
       const today = new Date().toISOString().split("T")[0];
-
       let html = "";
 
       for (const [cat, items] of Object.entries(structure)) {
@@ -633,6 +641,8 @@
             <div class="cat-title" onclick="toggleCategory('${catEsc}')">
               <div class="cat-title-left">${icons[cat] || "📁"} <span>${catEsc}</span></div>
               <div class="cat-actions" onclick="event.stopPropagation()">
+                <button class="btn-mini edit edit-mode-only" onclick="moveCategoryUp('${catEsc}')">↑</button>
+                <button class="btn-mini edit edit-mode-only" onclick="moveCategoryDown('${catEsc}')">↓</button>
                 <button class="btn-mini edit edit-mode-only" onclick="showAddItemForm('${catEsc}')">추가</button>
                 <button class="btn-mini edit edit-mode-only" onclick="showCategoryRenameForm('${catEsc}')">수정</button>
                 <button class="btn-mini del edit-mode-only" onclick="removeCategory('${catEsc}')">삭제</button>
@@ -667,6 +677,8 @@
               <summary>
                 <span class="summary-left">${nameEsc}</span>
                 <span class="item-actions" onclick="event.stopPropagation()">
+                  <button class="btn-mini edit edit-mode-only" onclick="moveItemUp('${catEsc}', '${nameEsc}')">↑</button>
+                  <button class="btn-mini edit edit-mode-only" onclick="moveItemDown('${catEsc}', '${nameEsc}')">↓</button>
                   <button class="btn-mini edit edit-mode-only" onclick="showItemRenameForm('${catEsc}', '${nameEsc}')">수정</button>
                   <button class="btn-mini del edit-mode-only" onclick="removeItem('${catEsc}', '${nameEsc}')">삭제</button>
                 </span>
@@ -719,22 +731,18 @@
     function toggleCategory(catName) {
       const box = document.getElementById(`cat-${makeId(catName)}`);
       if (!box) return;
-
       closeAllInlineEditors();
       box.classList.toggle("open");
     }
 
     function showGlobalCategoryAddForm() {
       if (!document.body.classList.contains("edit-mode")) return;
-
       closeAllInlineEditors();
-
       const box = document.getElementById("global-category-add-box");
       if (box) {
         box.classList.remove("hidden");
         box.classList.add("show");
       }
-
       const input = document.getElementById("newCategoryName");
       if (input) input.focus();
     }
@@ -745,46 +753,51 @@
         box.classList.remove("show");
         box.classList.add("hidden");
       }
-
       const input = document.getElementById("newCategoryName");
       if (input) input.value = "";
     }
 
-    function addCategory() {
+    async function addCategory() {
       const input = document.getElementById("newCategoryName");
-      const trimmed = (input?.value || "").trim();
-
+      const trimmed = String(input?.value || "").trim();
       if (!trimmed) {
         alert("카테고리명을 입력해주세요.");
         input?.focus();
         return;
       }
-
       if (structure[trimmed]) {
         alert("이미 같은 이름의 카테고리가 있습니다.");
         input?.focus();
         return;
       }
 
-      structure[trimmed] = [];
+      const orders = await getCategoryOrderMap();
+      const maxOrder = orders.length ? Math.max(...orders.map(x => x.category_order || 0)) + 1 : 1;
+
+      const { error } = await supabaseClient
+        .from("categories")
+        .insert([{ category_name: trimmed, item_name: "", icon: null, category_order: maxOrder, item_order: 0 }]);
+
+      if (error) {
+        alert("카테고리 추가에 실패했습니다.");
+        console.error(error);
+        return;
+      }
+
       hideGlobalCategoryAddForm();
-      rerenderStructure();
+      await rerenderStructure();
     }
 
     function showCategoryRenameForm(catName) {
       if (!document.body.classList.contains("edit-mode")) return;
-
       closeAllInlineEditors();
-
       const categoryBox = document.getElementById(`cat-${makeId(catName)}`);
       if (categoryBox) categoryBox.classList.add("open");
-
       const box = document.getElementById(`rename-cat-box-${makeId(catName)}`);
       if (box) {
         box.classList.remove("hidden");
         box.classList.add("show");
       }
-
       const input = document.getElementById(`rename-cat-input-${makeId(catName)}`);
       if (input) {
         input.focus();
@@ -802,18 +815,14 @@
 
     function showAddItemForm(catName) {
       if (!document.body.classList.contains("edit-mode")) return;
-
       closeAllInlineEditors();
-
       const categoryBox = document.getElementById(`cat-${makeId(catName)}`);
       if (categoryBox) categoryBox.classList.add("open");
-
       const box = document.getElementById(`add-item-box-${makeId(catName)}`);
       if (box) {
         box.classList.remove("hidden");
         box.classList.add("show");
       }
-
       const input = document.getElementById(`add-item-input-${makeId(catName)}`);
       if (input) input.focus();
     }
@@ -824,14 +833,13 @@
         box.classList.remove("show");
         box.classList.add("hidden");
       }
-
       const input = document.getElementById(`add-item-input-${makeId(catName)}`);
       if (input) input.value = "";
     }
 
-    function addItemToCategory(targetCategory) {
+    async function addItemToCategory(targetCategory) {
       const input = document.getElementById(`add-item-input-${makeId(targetCategory)}`);
-      const trimmedItem = (input?.value || "").trim();
+      const trimmedItem = String(input?.value || "").trim();
 
       if (!trimmedItem) {
         alert("세부 항목명을 입력해주세요.");
@@ -845,30 +853,48 @@
         return;
       }
 
-      structure[targetCategory].push(trimmedItem);
+      const { data: rows, error: readErr } = await supabaseClient
+        .from("categories")
+        .select("id, category_order, item_order")
+        .eq("category_name", targetCategory)
+        .order("item_order", { ascending: false });
+
+      if (readErr) {
+        alert("세부 항목 순서를 읽지 못했습니다.");
+        console.error(readErr);
+        return;
+      }
+
+      const categoryOrder = rows?.[0]?.category_order ?? 9999;
+      const nextItemOrder = (rows || []).reduce((max, row) => Math.max(max, Number(row.item_order || 0)), 0) + 1;
+
+      const { error } = await supabaseClient
+        .from("categories")
+        .insert([{ category_name: targetCategory, item_name: trimmedItem, icon: null, category_order: categoryOrder, item_order: nextItemOrder }]);
+
+      if (error) {
+        alert("세부 항목 추가에 실패했습니다.");
+        console.error(error);
+        return;
+      }
+
       hideAddItemForm(targetCategory);
-      rerenderStructure();
+      await rerenderStructure();
     }
 
     function showItemRenameForm(catName, itemName) {
       if (!document.body.classList.contains("edit-mode")) return;
-
       closeAllInlineEditors();
-
       const categoryBox = document.getElementById(`cat-${makeId(catName)}`);
       if (categoryBox) categoryBox.classList.add("open");
-
       const det = document.getElementById(`det-${makeId(itemName)}`);
       if (det) det.open = true;
-
       const key = makeId(catName + "::" + itemName);
       const box = document.getElementById(`rename-item-box-${key}`);
-
       if (box) {
         box.classList.remove("hidden");
         box.classList.add("show");
       }
-
       const input = document.getElementById(`rename-item-input-${key}`);
       if (input) {
         input.focus();
@@ -879,96 +905,121 @@
     function hideItemRenameForm(catName, itemName) {
       const key = makeId(catName + "::" + itemName);
       const box = document.getElementById(`rename-item-box-${key}`);
-
       if (box) {
         box.classList.remove("show");
         box.classList.add("hidden");
       }
     }
 
-    function applyCategoryRename(oldName) {
+    async function applyCategoryRename(oldName) {
       const input = document.getElementById(`rename-cat-input-${makeId(oldName)}`);
-      const trimmed = (input?.value || "").trim();
-
+      const trimmed = String(input?.value || "").trim();
       if (!trimmed) {
         alert("카테고리명을 입력해주세요.");
         input?.focus();
         return;
       }
-
       if (trimmed === oldName) {
         hideCategoryRenameForm(oldName);
         return;
       }
-
       if (structure[trimmed]) {
         alert("이미 같은 이름의 카테고리가 있습니다.");
         input?.focus();
         return;
       }
 
-      const newStructure = {};
-      for (const [cat, items] of Object.entries(structure)) {
-        newStructure[cat === oldName ? trimmed : cat] = items;
+      const { error } = await supabaseClient
+        .from("categories")
+        .update({ category_name: trimmed })
+        .eq("category_name", oldName);
+
+      if (error) {
+        alert("카테고리 수정에 실패했습니다.");
+        console.error(error);
+        return;
       }
 
-      structure = newStructure;
-      rerenderStructure();
+      await rerenderStructure();
     }
 
-    function removeCategory(catName) {
+    async function removeCategory(catName) {
       const itemCount = currentRows.filter(row => row.category === catName).length;
-
       const message = itemCount > 0
         ? `카테고리 "${catName}"를 삭제하면 화면 목록에서 사라지고, 해당 카테고리의 기존 데이터 ${itemCount}건은 조회 항목에서 제외될 수 있습니다. 삭제할까요?`
         : `카테고리 "${catName}"를 삭제할까요?`;
-
       if (!confirm(message)) return;
 
-      delete structure[catName];
-      rerenderStructure();
+      const { error } = await supabaseClient
+        .from("categories")
+        .delete()
+        .eq("category_name", catName);
+
+      if (error) {
+        alert("카테고리 삭제에 실패했습니다.");
+        console.error(error);
+        return;
+      }
+
+      await reindexAllOrders();
+      await rerenderStructure();
     }
 
-    function applyItemRename(catName, oldItemName) {
+    async function applyItemRename(catName, oldItemName) {
       const key = makeId(catName + "::" + oldItemName);
       const input = document.getElementById(`rename-item-input-${key}`);
-      const trimmed = (input?.value || "").trim();
-
+      const trimmed = String(input?.value || "").trim();
       if (!trimmed) {
         alert("세부 항목명을 입력해주세요.");
         input?.focus();
         return;
       }
-
       if (trimmed === oldItemName) {
         hideItemRenameForm(catName, oldItemName);
         return;
       }
-
       if ((structure[catName] || []).includes(trimmed)) {
         alert("이미 같은 이름의 세부 항목이 있습니다.");
         input?.focus();
         return;
       }
 
-      structure[catName] = (structure[catName] || []).map(item =>
-        item === oldItemName ? trimmed : item
-      );
+      const { error } = await supabaseClient
+        .from("categories")
+        .update({ item_name: trimmed })
+        .eq("category_name", catName)
+        .eq("item_name", oldItemName);
 
-      rerenderStructure();
+      if (error) {
+        alert("세부 항목 수정에 실패했습니다.");
+        console.error(error);
+        return;
+      }
+
+      await rerenderStructure();
     }
 
-    function removeItem(catName, itemName) {
+    async function removeItem(catName, itemName) {
       const itemCount = currentRows.filter(row => row.item_name === itemName && row.category === catName).length;
-
       const message = itemCount > 0
         ? `세부 항목 "${itemName}"를 삭제하면 화면 목록에서 사라지고, 해당 이력 ${itemCount}건은 조회 항목에서 제외될 수 있습니다. 삭제할까요?`
         : `세부 항목 "${itemName}"를 삭제할까요?`;
-
       if (!confirm(message)) return;
 
-      structure[catName] = (structure[catName] || []).filter(item => item !== itemName);
-      rerenderStructure();
+      const { error } = await supabaseClient
+        .from("categories")
+        .delete()
+        .eq("category_name", catName)
+        .eq("item_name", itemName);
+
+      if (error) {
+        alert("세부 항목 삭제에 실패했습니다.");
+        console.error(error);
+        return;
+      }
+
+      await reindexCategoryItems(catName);
+      await rerenderStructure();
     }
 
     async function loadServerData() {
@@ -994,7 +1045,6 @@
       });
 
       const grouped = {};
-
       currentRows.forEach(row => {
         const itemId = makeId(row.item_name);
         if (!grouped[itemId]) grouped[itemId] = [];
@@ -1007,7 +1057,6 @@
         if (!target) return;
 
         const totalPrice = rows.reduce((sum, r) => sum + Number(r.price || 0), 0);
-
         if (totalTarget) {
           totalTarget.textContent = `총 구매금액: ${numberFormat(totalPrice)}원 / 총 ${rows.length}건`;
         }
@@ -1052,21 +1101,15 @@
 
     function startInlineRowEdit(catName, itemName, rowId) {
       closeAllInlineEditors();
-
       const categoryBox = document.getElementById(`cat-${makeId(catName)}`);
       if (categoryBox) categoryBox.classList.add("open");
-
       const det = document.getElementById(`det-${makeId(itemName)}`);
       if (det) det.open = true;
 
       const row = currentRows.find(r => String(r.id) === String(rowId));
       if (!row) return;
 
-      activeEdit = {
-        rowId: String(rowId),
-        itemName,
-        category: catName
-      };
+      activeEdit = { rowId: String(rowId), itemName, category: catName };
 
       const id = makeId(itemName);
       const dateEl = document.getElementById(`date-${id}`);
@@ -1101,11 +1144,7 @@
       if (activeEdit && activeEdit.itemName === itemName) {
         const { error } = await supabaseClient
           .from("purchase_history")
-          .update({
-            purchase_date: date,
-            price: parseInt(price, 10),
-            note
-          })
+          .update({ purchase_date: date, price: parseInt(price, 10), note })
           .eq("id", activeEdit.rowId);
 
         if (error) {
@@ -1122,13 +1161,7 @@
 
       const { error } = await supabaseClient
         .from("purchase_history")
-        .insert([{
-          category: catName,
-          item_name: itemName,
-          price: parseInt(price, 10),
-          purchase_date: date,
-          note
-        }]);
+        .insert([{ category: catName, item_name: itemName, price: parseInt(price, 10), purchase_date: date, note }]);
 
       if (error) {
         alert("저장에 실패했습니다.");
@@ -1141,10 +1174,7 @@
     }
 
     function getAvailableYears() {
-      const years = [...new Set(
-        currentRows.map(r => String(r.purchase_date || "").slice(0, 4)).filter(Boolean)
-      )].sort((a, b) => b.localeCompare(a));
-
+      const years = [...new Set(currentRows.map(r => String(r.purchase_date || "").slice(0, 4)).filter(Boolean))].sort((a, b) => b.localeCompare(a));
       const currentYear = String(new Date().getFullYear());
       if (!years.includes(currentYear)) years.unshift(currentYear);
       return years;
@@ -1153,11 +1183,9 @@
     function populateYearSelect() {
       const select = document.getElementById("yearSelect");
       if (!select) return;
-
       const years = getAvailableYears();
       const currentYear = String(new Date().getFullYear());
       const previous = select.value || currentYear;
-
       select.innerHTML = years.map(y => `<option value="${y}">${y}년</option>`).join("");
       select.value = years.includes(previous) ? previous : currentYear;
     }
@@ -1168,42 +1196,31 @@
 
       const prev = select.value || "ALL";
       let html = `<option value="ALL">전체항목</option>`;
-
       Object.entries(structure).forEach(([cat, items]) => {
         html += `<option value="CAT::${cat}">[카테고리] ${cat}</option>`;
         items.forEach(item => {
           html += `<option value="ITEM::${cat}::${item}">└ ${item}</option>`;
         });
       });
-
       select.innerHTML = html;
       select.value = Array.from(select.options).some(o => o.value === prev) ? prev : "ALL";
     }
 
     function calcAmountByFilter(year, filterValue) {
       const rowsByYear = currentRows.filter(r => String(r.purchase_date || "").startsWith(year));
-
       if (filterValue === "ALL") {
         return rowsByYear.reduce((sum, r) => sum + Number(r.price || 0), 0);
       }
-
       if (filterValue.startsWith("CAT::")) {
         const category = filterValue.slice(5);
-        return rowsByYear
-          .filter(r => r.category === category)
-          .reduce((sum, r) => sum + Number(r.price || 0), 0);
+        return rowsByYear.filter(r => r.category === category).reduce((sum, r) => sum + Number(r.price || 0), 0);
       }
-
       if (filterValue.startsWith("ITEM::")) {
         const parts = filterValue.split("::");
         const category = parts[1] || "";
         const itemName = parts.slice(2).join("::");
-
-        return rowsByYear
-          .filter(r => r.category === category && r.item_name === itemName)
-          .reduce((sum, r) => sum + Number(r.price || 0), 0);
+        return rowsByYear.filter(r => r.category === category && r.item_name === itemName).reduce((sum, r) => sum + Number(r.price || 0), 0);
       }
-
       return 0;
     }
 
@@ -1211,9 +1228,7 @@
       const yearSelect = document.getElementById("yearSelect");
       const itemSelect = document.getElementById("itemFilterSelect");
       if (!yearSelect || !itemSelect) return;
-
       if (resetItem) itemSelect.value = "ALL";
-
       const total = calcAmountByFilter(yearSelect.value, itemSelect.value || "ALL");
       document.getElementById("sumPrice").textContent = `${numberFormat(total)}원`;
     }
@@ -1230,18 +1245,12 @@
 
     async function deleteRow(rowId) {
       if (!confirm("정말 삭제할까요?")) return;
-
-      const { error } = await supabaseClient
-        .from("purchase_history")
-        .delete()
-        .eq("id", rowId);
-
+      const { error } = await supabaseClient.from("purchase_history").delete().eq("id", rowId);
       if (error) {
         alert("삭제에 실패했습니다.");
         console.error(error);
         return;
       }
-
       closeAllInlineEditors();
       await loadServerData();
     }
@@ -1249,18 +1258,12 @@
     async function deleteAllRows() {
       if (!confirm("전체 데이터를 모두 삭제할까요?")) return;
       if (!confirm("정말로 전체 삭제를 진행할까요? 되돌릴 수 없습니다.")) return;
-
-      const { error } = await supabaseClient
-        .from("purchase_history")
-        .delete()
-        .neq("id", "");
-
+      const { error } = await supabaseClient.from("purchase_history").delete().neq("id", "");
       if (error) {
         alert("전체 삭제에 실패했습니다.");
         console.error(error);
         return;
       }
-
       closeAllInlineEditors();
       await loadServerData();
     }
@@ -1270,20 +1273,9 @@
         alert("내보낼 데이터가 없습니다.");
         return;
       }
-
       const header = ["카테고리", "품목명", "구매일", "가격", "비고"];
-      const rows = currentRows.map(r => [
-        r.category || "",
-        r.item_name || "",
-        r.purchase_date || "",
-        r.price || 0,
-        r.note || ""
-      ]);
-
-      const csv = [header, ...rows]
-        .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(","))
-        .join("\n");
-
+      const rows = currentRows.map(r => [r.category || "", r.item_name || "", r.purchase_date || "", r.price || 0, r.note || ""]);
+      const csv = [header, ...rows].map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n");
       const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -1291,6 +1283,153 @@
       a.download = "purchase_history_export.csv";
       a.click();
       URL.revokeObjectURL(url);
+    }
+
+    async function getCategoryOrderMap() {
+      const { data, error } = await supabaseClient
+        .from("categories")
+        .select("category_name, category_order")
+        .order("category_order", { ascending: true });
+
+      if (error) {
+        console.error(error);
+        return [];
+      }
+
+      const list = [];
+      const seen = new Set();
+      (data || []).forEach(row => {
+        if (!seen.has(row.category_name)) {
+          seen.add(row.category_name);
+          list.push({ category_name: row.category_name, category_order: Number(row.category_order || 0) });
+        }
+      });
+      return list;
+    }
+
+    async function moveCategoryUp(catName) {
+      await moveCategory(catName, -1);
+    }
+
+    async function moveCategoryDown(catName) {
+      await moveCategory(catName, 1);
+    }
+
+    async function moveCategory(catName, direction) {
+      const categories = await getCategoryOrderMap();
+      const index = categories.findIndex(c => c.category_name === catName);
+      if (index < 0) return;
+      const targetIndex = index + direction;
+      if (targetIndex < 0 || targetIndex >= categories.length) return;
+
+      const current = categories[index];
+      const target = categories[targetIndex];
+
+      const { error: err1 } = await supabaseClient
+        .from("categories")
+        .update({ category_order: -99999 })
+        .eq("category_name", current.category_name);
+      if (err1) { console.error(err1); alert("카테고리 순서 변경에 실패했습니다."); return; }
+
+      const { error: err2 } = await supabaseClient
+        .from("categories")
+        .update({ category_order: current.category_order })
+        .eq("category_name", target.category_name);
+      if (err2) { console.error(err2); alert("카테고리 순서 변경에 실패했습니다."); return; }
+
+      const { error: err3 } = await supabaseClient
+        .from("categories")
+        .update({ category_order: target.category_order })
+        .eq("category_name", current.category_name);
+      if (err3) { console.error(err3); alert("카테고리 순서 변경에 실패했습니다."); return; }
+
+      await reindexAllOrders();
+      await rerenderStructure();
+    }
+
+    async function moveItemUp(catName, itemName) {
+      await moveItem(catName, itemName, -1);
+    }
+
+    async function moveItemDown(catName, itemName) {
+      await moveItem(catName, itemName, 1);
+    }
+
+    async function moveItem(catName, itemName, direction) {
+      const { data, error } = await supabaseClient
+        .from("categories")
+        .select("id, item_name, item_order")
+        .eq("category_name", catName)
+        .neq("item_name", "")
+        .order("item_order", { ascending: true });
+
+      if (error) {
+        console.error(error);
+        alert("세부 항목 순서를 읽지 못했습니다.");
+        return;
+      }
+
+      const items = data || [];
+      const index = items.findIndex(i => i.item_name === itemName);
+      if (index < 0) return;
+      const targetIndex = index + direction;
+      if (targetIndex < 0 || targetIndex >= items.length) return;
+
+      const current = items[index];
+      const target = items[targetIndex];
+
+      const { error: err1 } = await supabaseClient
+        .from("categories")
+        .update({ item_order: -99999 })
+        .eq("id", current.id);
+      if (err1) { console.error(err1); alert("세부 항목 순서 변경에 실패했습니다."); return; }
+
+      const { error: err2 } = await supabaseClient
+        .from("categories")
+        .update({ item_order: current.item_order })
+        .eq("id", target.id);
+      if (err2) { console.error(err2); alert("세부 항목 순서 변경에 실패했습니다."); return; }
+
+      const { error: err3 } = await supabaseClient
+        .from("categories")
+        .update({ item_order: target.item_order })
+        .eq("id", current.id);
+      if (err3) { console.error(err3); alert("세부 항목 순서 변경에 실패했습니다."); return; }
+
+      await reindexCategoryItems(catName);
+      await rerenderStructure();
+    }
+
+    async function reindexCategoryItems(catName) {
+      const { data, error } = await supabaseClient
+        .from("categories")
+        .select("id, item_name")
+        .eq("category_name", catName)
+        .neq("item_name", "")
+        .order("item_order", { ascending: true });
+
+      if (error) {
+        console.error(error);
+        return;
+      }
+
+      for (let i = 0; i < (data || []).length; i++) {
+        await supabaseClient
+          .from("categories")
+          .update({ item_order: i + 1 })
+          .eq("id", data[i].id);
+      }
+    }
+
+    async function reindexAllOrders() {
+      const categories = await getCategoryOrderMap();
+      for (let i = 0; i < categories.length; i++) {
+        await supabaseClient
+          .from("categories")
+          .update({ category_order: i + 1 })
+          .eq("category_name", categories[i].category_name);
+        await reindexCategoryItems(categories[i].category_name);
+      }
     }
   </script>
 </body>
