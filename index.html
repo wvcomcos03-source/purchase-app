@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -1316,6 +1317,33 @@
     }
 
     async function moveCategory(catName, direction) {
+      // 1) 화면(클라이언트) 우선: structure와 DOM을 먼저 재배치해서 즉시 반응하게 처리
+      const structEntries = Object.entries(structure);
+      const structIndex = structEntries.findIndex(([name]) => name === catName);
+      const structTargetIndex = structIndex + direction;
+      if (structIndex >= 0 && structTargetIndex >= 0 && structTargetIndex < structEntries.length) {
+        const [moved] = structEntries.splice(structIndex, 1);
+        structEntries.splice(structTargetIndex, 0, moved);
+        structure = Object.fromEntries(structEntries);
+
+        const area = document.getElementById("renderArea");
+        if (area) {
+          const catId = `cat-${makeId(catName)}`;
+          const catEls = Array.from(area.querySelectorAll(".category"));
+          const elIndex = catEls.findIndex(el => el.id === catId);
+          const currentEl = catEls[elIndex];
+          const targetEl = catEls[elIndex + direction];
+          if (currentEl && targetEl) {
+            if (direction < 0) {
+              area.insertBefore(currentEl, targetEl);
+            } else {
+              area.insertBefore(currentEl, targetEl.nextSibling);
+            }
+          }
+        }
+      }
+
+      // 2) Supabase 순서 정보도 백그라운드로 동기화
       const categories = await getCategoryOrderMap();
       const index = categories.findIndex(c => c.category_name === catName);
       if (index < 0) return;
@@ -1344,7 +1372,6 @@
       if (err3) { console.error(err3); alert("카테고리 순서 변경에 실패했습니다."); return; }
 
       await reindexAllOrders();
-      await rerenderStructure();
     }
 
     async function moveItemUp(catName, itemName) {
@@ -1356,6 +1383,36 @@
     }
 
     async function moveItem(catName, itemName, direction) {
+      // 1) 화면(클라이언트) 우선: structure와 DOM을 먼저 재배치해서 즉시 반응하게 처리
+      const list = structure[catName] || [];
+      const localIndex = list.indexOf(itemName);
+      const localTargetIndex = localIndex + direction;
+      if (localIndex >= 0 && localTargetIndex >= 0 && localTargetIndex < list.length) {
+        const [movedItem] = list.splice(localIndex, 1);
+        list.splice(localTargetIndex, 0, movedItem);
+        structure[catName] = list;
+
+        const catBox = document.getElementById(`cat-${makeId(catName)}`);
+        if (catBox) {
+          const body = catBox.querySelector(".category-body");
+          if (body) {
+            const detailsEls = Array.from(body.querySelectorAll("details"));
+            const detId = `det-${makeId(itemName)}`;
+            const elIndex = detailsEls.findIndex(el => el.id === detId);
+            const currentEl = detailsEls[elIndex];
+            const targetEl = detailsEls[elIndex + direction];
+            if (currentEl && targetEl) {
+              if (direction < 0) {
+                body.insertBefore(currentEl, targetEl);
+              } else {
+                body.insertBefore(currentEl, targetEl.nextSibling);
+              }
+            }
+          }
+        }
+      }
+
+      // 2) Supabase 순서 정보도 백그라운드로 동기화
       const { data, error } = await supabaseClient
         .from("categories")
         .select("id, item_name, item_order")
@@ -1397,7 +1454,6 @@
       if (err3) { console.error(err3); alert("세부 항목 순서 변경에 실패했습니다."); return; }
 
       await reindexCategoryItems(catName);
-      await rerenderStructure();
     }
 
     async function reindexCategoryItems(catName) {
